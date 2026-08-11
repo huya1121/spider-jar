@@ -29,17 +29,17 @@ Android SDK 的机器上跑一次 `build.sh`。源码本身是完整、可直接
 ```bash
 export ANDROID_HOME=/path/to/Android/Sdk
 cd zy2-spider
-bash build.sh          # 产出 zy2.jar
+bash build.sh          # 产出 juhe.jar
 ```
 
 Windows 下可用 Git Bash 运行，或把命令换成 `d8.bat`。也可以直接把 `src` 丢进
 Android Studio 的一个 module，用 IDE 的 d8 出包。
 
-产出的 `zy2.jar` 放到你配置里 `spider` 指向的位置：`./jar/zy2.jar`。
+产出的 `juhe.jar` 放到你配置里 `spider` 指向的位置：`./jar/juhe.jar`。
 
 ## 加进你的配置
 
-`spider` 字段保持不变（`./jar/zy2.jar`），在 `sites` 里加一个 `type:3` 的入口：
+`spider` 字段保持不变（`./jar/juhe.jar`），在 `sites` 里加一个 `type:3` 的入口：
 
 ```json
 {

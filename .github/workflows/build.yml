@@ -35,6 +35,6 @@ jobs:
       - name: 上传 jar 产物
         uses: actions/upload-artifact@v4
         with:
-          name: zy2-jar
-          path: zy2.jar
+          name: juhe-jar
+          path: juhe.jar
           if-no-files-found: error

@@ -5,7 +5,7 @@
 # CI 里由 GitHub Actions 自动装好 SDK 再调用本脚本
 set -e
 
-OUT_JAR="${OUT_JAR:-zy2.jar}"
+OUT_JAR="${OUT_JAR:-juhe.jar}"
 ROOT="$(cd "$(dirname "$0")" && pwd)"
 
 # ---- 自动探测 Android SDK ----------------------------------------------

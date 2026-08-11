@@ -1,5 +1,5 @@
 {
-  "spider": "./jar/zy2.jar",
+  "spider": "./jar/juhe.jar",
   "lives": [
     {
       "name": "直播",
