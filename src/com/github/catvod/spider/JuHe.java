@@ -113,29 +113,66 @@ public class JuHe extends Spider {
     public String homeContent(boolean filter) throws Exception {
         JSONObject result = new JSONObject();
         JSONArray classes = new JSONArray();
+        JSONObject filters = new JSONObject();
         classes.put(clazz("notice", "📢公告"));
-        // 用第一个源的分类作为浏览分类
+        // 用第一个源的分类作为浏览分类（含层级 + 类型筛选）
         if (!sites.isEmpty()) {
             try {
-                String body = get(sites.get(0)[1] + "?ac=list");
-                JSONObject obj = new JSONObject(body);
-                JSONArray list = obj.optJSONArray("class");
-                if (list != null) {
-                    for (int i = 0; i < list.length(); i++) {
-                        JSONObject c = list.optJSONObject(i);
-                        if (c == null) continue;
-                        String id = c.optString("type_id");
-                        String name = c.optString("type_name");
-                        if (!TextUtils.isEmpty(id) && !TextUtils.isEmpty(name)) {
-                            classes.put(clazz("0@" + id, name));
-                        }
-                    }
-                }
+                JSONObject obj = new JSONObject(get(sites.get(0)[1] + "?ac=list"));
+                JSONArray cls = obj.optJSONArray("class");
+                if (cls != null) buildClasses(cls, classes, filters);
             } catch (Exception ignored) {}
         }
         result.put("class", classes);
+        if (filters.length() > 0) result.put("filters", filters);
         result.put("list", homeList());
         return result.toString();
+    }
+
+    /** 依据 type_pid 把分类构建成 顶级分类 + 子类型筛选；无层级信息则平铺 */
+    private void buildClasses(JSONArray cls, JSONArray classes, JSONObject filters) {
+        java.util.Map<String, JSONObject> parents = new java.util.LinkedHashMap<>();
+        java.util.Map<String, List<JSONObject>> children = new java.util.HashMap<>();
+        boolean hierarchy = false;
+        for (int i = 0; i < cls.length(); i++) {
+            JSONObject c = cls.optJSONObject(i);
+            if (c == null) continue;
+            String id = c.optString("type_id");
+            if (TextUtils.isEmpty(id)) continue;
+            String pid = c.optString("type_pid", "0");
+            if (TextUtils.isEmpty(pid) || "0".equals(pid)) {
+                parents.put(id, c);
+            } else {
+                hierarchy = true;
+                if (!children.containsKey(pid)) children.put(pid, new ArrayList<JSONObject>());
+                children.get(pid).add(c);
+            }
+        }
+        if (!hierarchy) { // 平铺
+            for (int i = 0; i < cls.length(); i++) {
+                JSONObject c = cls.optJSONObject(i);
+                if (c == null) continue;
+                String id = c.optString("type_id"), name = c.optString("type_name");
+                if (!TextUtils.isEmpty(id) && !TextUtils.isEmpty(name)) classes.put(clazz("0@" + id, name));
+            }
+            return;
+        }
+        try {
+            for (java.util.Map.Entry<String, JSONObject> e : parents.entrySet()) {
+                String tid = "0@" + e.getKey();
+                classes.put(clazz(tid, e.getValue().optString("type_name")));
+                List<JSONObject> ch = children.get(e.getKey());
+                if (ch == null || ch.isEmpty()) continue;
+                JSONArray values = new JSONArray();
+                values.put(kv("全部", ""));
+                for (JSONObject cc : ch) values.put(kv(cc.optString("type_name"), cc.optString("type_id")));
+                JSONObject f = new JSONObject();
+                f.put("key", "cateId");
+                f.put("name", "类型");
+                f.put("value", values);
+                filters.put(tid, new JSONArray().put(f));
+            }
+        } catch (Exception ignored) {}
     }
 
     @Override
@@ -185,6 +222,12 @@ public class JuHe extends Spider {
         }
         if (idx < 0 || idx >= sites.size()) idx = 0;
 
+        // 若用户选了「类型」筛选，用子类型 id 覆盖
+        if (extend != null) {
+            String cate = extend.get("cateId");
+            if (!TextUtils.isEmpty(cate)) typeId = cate;
+        }
+
         String url = sites.get(idx)[1] + "?ac=detail&t=" + typeId + "&pg=" + pg;
         JSONObject obj = new JSONObject(get(url));
         appendVodList(list, obj.optJSONArray("list"), idx);
@@ -225,7 +268,8 @@ public class JuHe extends Spider {
                 public JSONArray call() {
                     JSONArray out = new JSONArray();
                     try {
-                        String url = sites.get(idx)[1] + "?ac=detail&wd="
+                        // 搜索用轻量 ac=list（不含播放地址），详情再按需拉取，多源并发更快
+                        String url = sites.get(idx)[1] + "?ac=list&wd="
                                 + URLEncoder.encode(key, "UTF-8");
                         JSONObject obj = new JSONObject(get(url));
                         appendVodList(out, obj.optJSONArray("list"), idx);
@@ -484,6 +528,15 @@ public class JuHe extends Spider {
                 target.put(v);
             } catch (Exception ignored) {}
         }
+    }
+
+    private JSONObject kv(String n, String v) {
+        JSONObject o = new JSONObject();
+        try {
+            o.put("n", n);
+            o.put("v", v);
+        } catch (Exception ignored) {}
+        return o;
     }
 
     private JSONObject clazz(String id, String name) {
