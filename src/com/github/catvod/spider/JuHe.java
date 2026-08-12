@@ -18,7 +18,6 @@ import java.net.HttpURLConnection;
 import java.net.URL;
 import java.net.URLEncoder;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -660,17 +659,11 @@ public class JuHe extends Spider {
     public String playerContent(String flag, String id, List<String> vipFlags) throws Exception {
         JSONObject result = new JSONObject();
         boolean direct = isDirect(id);
-        String url = id;
-        // m3u8 直链且拿得到本地代理地址时，走去广告代理
-        if (direct && id.toLowerCase().contains(".m3u8")) {
-            String proxy = proxyUrl();
-            if (!TextUtils.isEmpty(proxy)) {
-                url = proxy + "?do=juhe&type=m3u8&url=" + URLEncoder.encode(id, "UTF-8");
-            }
-        }
+        // 直接把源站地址交给播放器，不做 m3u8 去广告清洗
+        // （时长中位数过滤会误删正常分片，导致播放不断跳片）
         result.put("parse", direct ? 0 : 1);
         result.put("playUrl", "");
-        result.put("url", url);
+        result.put("url", id);
         JSONObject header = new JSONObject();
         header.put("User-Agent", UA);
         result.put("header", header);
@@ -678,7 +671,7 @@ public class JuHe extends Spider {
     }
 
     // ---------------------------------------------------------------------
-    // 本地代理：清洗 m3u8 去广告（时长突变过滤）
+    // 本地代理：仅用于豆瓣海报防盗链（m3u8 去广告已移除）
     // ---------------------------------------------------------------------
     @Override
     public Object[] proxyLocal(Map<String, String> params) throws Exception {
@@ -700,16 +693,7 @@ public class JuHe extends Spider {
             }
         }
 
-        if (!"m3u8".equals(type)) return null;
-        try {
-            String raw = get(url);
-            String cleaned = cleanM3U8(raw, url);
-            byte[] bytes = cleaned.getBytes("UTF-8");
-            return new Object[]{200, "application/vnd.apple.mpegurl",
-                    new ByteArrayInputStream(bytes)};
-        } catch (Exception e) {
-            return null; // 失败则播放器仍可直连原始链接（parse:0 的 url 已给出）
-        }
+        return null;
     }
 
     /** 二进制拉取（带可选 Referer），仅 2xx 才返回 {contentType, bytes}，否则 null */
@@ -738,117 +722,6 @@ public class JuHe extends Spider {
         } finally {
             if (conn != null) conn.disconnect();
         }
-    }
-
-    /**
-     * 时长突变过滤：以所有分片时长的中位数为基准，剔除时长明显偏离（过短的插入广告）
-     * 的分片。master 播放列表只做绝对化处理，不过滤。
-     */
-    private String cleanM3U8(String raw, String baseUrl) {
-        if (TextUtils.isEmpty(raw)) return raw;
-        String[] lines = raw.split("\\r?\\n");
-
-        // master 列表：把子流/KEY 的相对地址绝对化后原样返回
-        boolean master = raw.contains("#EXT-X-STREAM-INF");
-        StringBuilder out = new StringBuilder();
-        if (master) {
-            for (String line : lines) {
-                out.append(absLine(line, baseUrl)).append("\n");
-            }
-            return out.toString();
-        }
-
-        // 先收集所有 EXTINF 时长求中位数
-        List<Double> durs = new ArrayList<>();
-        for (String line : lines) {
-            Double d = parseExtinf(line);
-            if (d != null) durs.add(d);
-        }
-        double median = median(durs);
-        // 中位数拿不到、或分片太少(样本不足中位数不可信，易误删正常片尾/短片)就不过滤，直接绝对化返回
-        if (median <= 0 || durs.size() < 6) {
-            for (String line : lines) out.append(absLine(line, baseUrl)).append("\n");
-            return out.toString();
-        }
-        double low = median * 0.5;   // 短于中位数一半判为广告
-        double high = median * 3.0;  // 长于中位数三倍也判为异常插入
-
-        // 逐分片处理：一个分片 = 若干 #EXT 标签 + 一行 url
-        List<String> pending = new ArrayList<>();
-        Double pendingDur = null;
-        for (String line : lines) {
-            String t = line.trim();
-            if (t.isEmpty()) continue;
-            if (t.startsWith("#EXT-X-DISCONTINUITY")) {
-                // 丢弃广告常用的不连续标记，避免播放器计时错乱
-                continue;
-            }
-            if (t.startsWith("#")) {
-                Double d = parseExtinf(t);
-                if (d != null) pendingDur = d;
-                pending.add(absLine(t, baseUrl));
-                // 头部全局标签（无对应分片）直接落盘
-                if (pendingDur == null && !t.startsWith("#EXTINF")) {
-                    out.append(pending.remove(pending.size() - 1)).append("\n");
-                }
-                continue;
-            }
-            // 到这里 t 是分片 url 行
-            boolean isAd = pendingDur != null && (pendingDur < low || pendingDur > high);
-            if (!isAd) {
-                for (String p : pending) out.append(p).append("\n");
-                out.append(absLine(t, baseUrl)).append("\n");
-            }
-            pending.clear();
-            pendingDur = null;
-        }
-        // 收尾遗留标签
-        for (String p : pending) out.append(p).append("\n");
-        if (!out.toString().contains("#EXT-X-ENDLIST")) out.append("#EXT-X-ENDLIST\n");
-        return out.toString();
-    }
-
-    private Double parseExtinf(String line) {
-        if (!line.startsWith("#EXTINF")) return null;
-        try {
-            int colon = line.indexOf(':');
-            String rest = line.substring(colon + 1);
-            int comma = rest.indexOf(',');
-            String num = (comma >= 0 ? rest.substring(0, comma) : rest).trim();
-            return Double.parseDouble(num);
-        } catch (Exception e) {
-            return null;
-        }
-    }
-
-    private double median(List<Double> values) {
-        if (values.isEmpty()) return 0;
-        List<Double> v = new ArrayList<>(values);
-        Collections.sort(v);
-        int n = v.size();
-        return n % 2 == 1 ? v.get(n / 2) : (v.get(n / 2 - 1) + v.get(n / 2)) / 2.0;
-    }
-
-    /** 把 m3u8 里的相对分片/KEY 地址转成绝对地址，代理只发列表、分片仍走源站直连 */
-    private String absLine(String line, String baseUrl) {
-        try {
-            String t = line.trim();
-            if (t.startsWith("#EXT-X-KEY") && t.contains("URI=\"")) {
-                int s = t.indexOf("URI=\"") + 5;
-                int e = t.indexOf('"', s);
-                String uri = t.substring(s, e);
-                return t.substring(0, s) + abs(uri, baseUrl) + t.substring(e);
-            }
-            if (t.isEmpty() || t.startsWith("#")) return line;
-            return abs(t, baseUrl);
-        } catch (Exception e) {
-            return line;
-        }
-    }
-
-    private String abs(String ref, String baseUrl) throws Exception {
-        if (ref.startsWith("http://") || ref.startsWith("https://")) return ref;
-        return new URL(new URL(baseUrl), ref).toString();
     }
 
     /** 反射获取宿主本地代理地址，取不到就返回空（不同 TVBox 分支实现不一）。成功结果缓存，避免每张海报重复反射 */
@@ -992,7 +865,7 @@ public class JuHe extends Spider {
         }
     }
 
-    /** 裸 HttpURLConnection 回退实现，逐行读取并保留换行（m3u8 清洗依赖行结构） */
+    /** 裸 HttpURLConnection 回退实现 */
     private String rawGet(String urlStr, String referer) throws Exception {
         HttpURLConnection conn = null;
         try {

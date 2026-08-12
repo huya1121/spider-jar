@@ -1,7 +1,7 @@
 {
   "spider": "./jar/juhe.jar",
   "homepage": "juhe",
-  "notice": "📢 欢迎使用聚合搜索  |  首页豆瓣热门，点开自动聚合资源站取播放地址  |  顶部搜索一次搜全部源  |  播放自动去广告  |  有问题请重进App",
+  "notice": "📢 欢迎使用聚合搜索  |  首页豆瓣热门，点开自动聚合资源站取播放地址  |  顶部搜索一次搜全部源  |  有问题请重进App",
 
   "lives": [
     {
@@ -17,13 +17,14 @@
   "sites": [
     {
       "key": "juhe",
-      "name": "🔍聚合搜索",
+      "name": "🐯老虎聚合搜索 | 免费资源请勿购买",
       "type": 3,
       "api": "csp_JuHe",
       "searchable": 1,
       "quickSearch": 1,
       "filterable": 1,
       "ext": {
+        "notice": "📢本软件免费使用,请勿购买!\n请勿相信视频中任何广告！",
         "douban": true,
         "doubanImageProxy": "https://dbimg.qqff.de",
         "sites": [
@@ -69,19 +70,6 @@
     "cnzz.mmstat.com",
     "flv2001.com",
     "hm.baidu.com"
-  ],
-
-  "rules": [
-    {
-      "name": "m3u8去广告",
-      "hosts": ["*"],
-      "regex": [
-        "#EXT-X-DISCONTINUITY\\r?\\n#EXTINF:\\d{1,}(\\.\\d+)?,[\\s\\S]*?#EXT-X-DISCONTINUITY",
-        "#EXTINF:.*?\\s+.*?adjump.*?\\.ts\\s+",
-        "#EXTINF:.*?\\s+.*?/ad/.*?\\.ts\\s+",
-        "#EXTINF:.*?\\s+.*?_ad_.*?\\.ts\\s+"
-      ]
-    }
   ],
 
   "doh": [
